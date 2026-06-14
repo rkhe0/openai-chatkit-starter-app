@@ -5,7 +5,15 @@ interface Env {
   CHATKIT_API_BASE?: string;
 }
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
+  if (request.method === "GET") {
+    return json({ ok: true, message: "Use POST /api/create-session" }, 200);
+  }
+
+  if (request.method !== "POST") {
+    return json({ error: "Method Not Allowed" }, 405);
+  }
+
   const body = await request.json().catch(() => ({} as any));
 
   const workflowId =
@@ -32,12 +40,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       Authorization: `Bearer ${env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
+      user: "demo-user",
       workflow: { id: workflowId },
-      user: crypto.randomUUID(),
     }),
   });
 
-  const payload = await upstream.json().catch(() => ({}));
+  const payload = await upstream.json().catch(() => ({} as any));
 
   if (!upstream.ok) {
     return json(
@@ -51,14 +59,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     );
   }
 
+  const clientSecret =
+    typeof payload.client_secret === "string"
+      ? payload.client_secret
+      : payload.client_secret?.value;
+
+  if (!clientSecret) {
+    return json({ error: "Missing client_secret from OpenAI response" }, 500);
+  }
+
   return json({
-    client_secret: payload.client_secret,
+    client_secret: clientSecret,
     expires_after: payload.expires_after,
   });
-};
-
-export const onRequestGet: PagesFunction = async () => {
-  return json({ ok: true, message: "Use POST /api/create-session" }, 200);
 };
 
 function json(data: unknown, status = 200) {
