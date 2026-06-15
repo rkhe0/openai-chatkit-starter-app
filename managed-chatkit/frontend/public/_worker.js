@@ -981,8 +981,6 @@ const emailTo =
   settings.email ||
   env.EMAIL_TO;
 
-  const emailTo = body.email || env.EMAIL_TO;
-
   const collected = await collectTrendSources(topic, env);
   const briefing = await createBriefing(topic, collected.sources, env);
 
