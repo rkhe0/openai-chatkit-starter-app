@@ -959,7 +959,7 @@ async function handleDailyBriefing(request, env) {
     body = await request.json().catch(() => ({}));
   }
 
-  const settings = await getDailySettings(env);
+ const settings = await getDailySettings(env);
 
 if (!settings.enabled && !body.force) {
   return json({
@@ -1293,7 +1293,7 @@ async function handleDailySettings(request, env) {
   if (!env.DEVTREND_KV) {
     return json(
       {
-        error: "Missing KV binding",
+        error: "Missing DEVTREND_KV binding",
         message: "Cloudflare Pages에 DEVTREND_KV binding을 추가해야 합니다.",
       },
       500
@@ -1356,6 +1356,69 @@ async function handleDailySettings(request, env) {
   }
 
   return json({ error: "Method not allowed" }, 405);
+}
+
+async function handleDailyRunNow(request, env) {
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed" }, 405);
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const settings = await getDailySettings(env);
+
+  const topic = String(body.topic || settings.topic || "").trim();
+  const emailTo = String(body.email || settings.email || env.EMAIL_TO || "").trim();
+
+  if (!topic) {
+    return json({ error: "No daily report topic configured" }, 400);
+  }
+
+  const delivery = {
+    email:
+      typeof body.delivery?.email === "boolean"
+        ? body.delivery.email
+        : settings.delivery?.email ?? true,
+    notion:
+      typeof body.delivery?.notion === "boolean"
+        ? body.delivery.notion
+        : settings.delivery?.notion ?? true,
+  };
+
+  const collected = await collectTrendSources(topic, env);
+  const briefing = await createBriefing(topic, collected.sources, env);
+
+  const result = {
+    topic,
+    generated_at: new Date().toISOString(),
+    counts: collected.counts,
+    source_errors: collected.source_errors,
+    api_evidence: getApiEvidence(),
+    briefing,
+  };
+
+  const notion = delivery.notion
+    ? await saveBriefingToNotion(result, env)
+    : {
+        ok: false,
+        skipped: true,
+        reason: "Notion delivery disabled",
+      };
+
+  const email = delivery.email
+    ? await sendBriefingEmail(result, emailTo, env)
+    : {
+        ok: false,
+        skipped: true,
+        reason: "Email delivery disabled",
+      };
+
+  return json({
+    ok: true,
+    message: "Daily report generated manually",
+    result,
+    notion,
+    email,
+  });
 }
 
 async function getDailySettings(env) {
