@@ -28,6 +28,42 @@ jobs:
         working-directory: scheduled-agent
         run: npm install
 
+      - name: Load saved report topic from Cloudflare KV
+        env:
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          SCHEDULE_SECRET: ${{ secrets.SCHEDULE_SECRET }}
+          MANUAL_TOPIC: ${{ github.event.inputs.topic }}
+        run: |
+          set -e
+
+          if [ -n "$MANUAL_TOPIC" ]; then
+            echo "Using manual topic from workflow_dispatch input."
+            topic="$MANUAL_TOPIC"
+            enabled="true"
+          else
+            response=$(curl -fsS "$APP_BASE_URL/api/scheduled-settings?token=$SCHEDULE_SECRET")
+            echo "$response"
+
+            enabled=$(echo "$response" | jq -r '.settings.enabled')
+            topic=$(echo "$response" | jq -r '.settings.topic')
+          fi
+
+          if [ "$enabled" != "true" ]; then
+            echo "Daily report is disabled by saved settings."
+            exit 0
+          fi
+
+          if [ -z "$topic" ] || [ "$topic" = "null" ]; then
+            echo "No topic configured."
+            exit 1
+          fi
+
+          echo "DAILY_TOPIC<<EOF" >> "$GITHUB_ENV"
+          echo "$topic" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+          echo "Loaded topic: $topic"
+
       - name: Run exported Agent Builder workflow
         working-directory: scheduled-agent
         env:
