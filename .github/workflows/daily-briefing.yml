@@ -1,0 +1,17 @@
+name: Daily DevTrend Briefing
+
+on:
+  schedule:
+    # 한국 오전 8시 = 전날 23:00 UTC
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger-daily-briefing:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Cloudflare daily briefing endpoint
+        run: |
+          curl -X POST "${{ secrets.DAILY_BRIEFING_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{}"
