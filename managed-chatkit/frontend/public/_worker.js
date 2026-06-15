@@ -1009,3 +1009,50 @@ function normalizeSearchTerms(query) {
 
   return [...new Set(terms)].slice(0, 8);
 }
+function normalizeGenericSearchTerms(query) {
+  const stopwords = new Set([
+    "or",
+    "and",
+    "not",
+    "with",
+    "for",
+    "from",
+    "the",
+    "a",
+    "an",
+    "of",
+    "in",
+    "on",
+    "to",
+    "latest",
+    "recent",
+    "trend",
+    "trends",
+    "technology",
+    "technologies",
+    "tool",
+    "tools",
+    "service",
+    "services",
+    "related",
+    "관련",
+    "최신",
+    "트렌드",
+  ]);
+
+  return String(query || "")
+    .toLowerCase()
+    .replace(/["'“”‘’]/g, " ")
+    .replace(/[(){}\[\]]/g, " ")
+    .replace(/[|]/g, " ")
+    .replace(/[:;,!?]/g, " ")
+    .replace(/-/g, " ")
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean)
+    .filter((term) => !stopwords.has(term))
+    .filter((term) => /^[a-z0-9]+$/.test(term))
+    .filter((term) => term.length >= 2)
+    .filter((term, index, arr) => arr.indexOf(term) === index)
+    .slice(0, 12);
+}
