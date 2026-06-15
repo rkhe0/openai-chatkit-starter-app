@@ -404,40 +404,99 @@ async function searchGithub(query, env) {
  * Hacker News Algolia API 호출
  */
 async function searchHackerNews(query) {
-  const params = new URLSearchParams({
-    query,
-    tags: "story",
-    hitsPerPage: "5",
-  });
+  const queries = buildHackerNewsQueries(query);
+  const allHits = [];
 
-  const response = await fetch(
-    `https://hn.algolia.com/api/v1/search_by_date?${params}`,
-    {
-      headers: {
-        "User-Agent": "DevTrendAgent/1.0",
-      },
+  for (const q of queries) {
+    const params = new URLSearchParams({
+      query: q,
+      tags: "story",
+      hitsPerPage: "5",
+    });
+
+    const response = await fetch(
+      `https://hn.algolia.com/api/v1/search_by_date?${params}`,
+      {
+        headers: {
+          "User-Agent": "DevTrendAgent/1.0",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Hacker News API failed: ${response.status}`);
     }
-  );
 
-  if (!response.ok) {
-    throw new Error(`Hacker News API failed: ${response.status}`);
+    const data = await response.json();
+
+    for (const item of data.hits || []) {
+      allHits.push({
+        source: "Hacker News",
+        matched_query: q,
+        title: item.title || item.story_title || "",
+        url:
+          item.url ||
+          item.story_url ||
+          `https://news.ycombinator.com/item?id=${item.objectID}`,
+        hn_url: `https://news.ycombinator.com/item?id=${item.objectID}`,
+        points: item.points || 0,
+        comments: item.num_comments || 0,
+        created_at: item.created_at,
+        author: item.author,
+        objectID: item.objectID,
+      });
+    }
+
+    if (allHits.length >= 10) {
+      break;
+    }
   }
 
-  const data = await response.json();
+  const deduped = dedupeByKey(allHits, "objectID");
 
-  return (data.hits || []).slice(0, 5).map((item) => ({
-    source: "Hacker News",
-    title: item.title || item.story_title || "",
-    url:
-      item.url ||
-      item.story_url ||
-      `https://news.ycombinator.com/item?id=${item.objectID}`,
-    hn_url: `https://news.ycombinator.com/item?id=${item.objectID}`,
-    points: item.points || 0,
-    comments: item.num_comments || 0,
-    created_at: item.created_at,
-    author: item.author,
-  }));
+  return deduped
+    .filter((item) => item.title || item.url)
+    .sort((a, b) => {
+      const aScore = (a.points || 0) + (a.comments || 0) * 2;
+      const bScore = (b.points || 0) + (b.comments || 0) * 2;
+      return bScore - aScore;
+    })
+    .slice(0, 5);
+}
+
+function buildHackerNewsQueries(query) {
+  const terms = normalizeGenericSearchTerms(query);
+
+  const queries = [];
+
+  const original = terms.slice(0, 6).join(" ");
+  if (original) queries.push(original);
+
+  for (let i = 0; i < terms.length - 1; i++) {
+    queries.push(`${terms[i]} ${terms[i + 1]}`);
+  }
+
+  for (const term of terms) {
+    if (term.length >= 3) {
+      queries.push(term);
+    }
+  }
+
+  return [...new Set(queries)].slice(0, 10);
+}
+
+function dedupeByKey(items, key) {
+  const seen = new Set();
+  const result = [];
+
+  for (const item of items) {
+    const value = item[key] || item.url || item.title;
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    result.push(item);
+  }
+
+  return result;
 }
 
 /**
