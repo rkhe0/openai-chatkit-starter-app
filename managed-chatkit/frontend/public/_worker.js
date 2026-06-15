@@ -262,25 +262,64 @@ function getApiEvidence() {
  * arXiv API 호출
  */
 async function searchArxiv(query) {
-  const terms = query
-    .split(/\s+/)
-    .map((x) => x.trim())
-    .filter(Boolean)
-    .slice(0, 6);
+  const safeTerms = normalizeSearchTerms(query).slice(0, 6);
 
-  const termQueries = terms.map((term) => `all:${escapeArxivTerm(term)}`);
+  if (safeTerms.length === 0) {
+    return [];
+  }
 
-  const searchQuery = `(${termQueries.join(
-    " OR "
-  )}) AND (cat:cs.AI OR cat:cs.LG OR cat:cs.CL OR cat:cs.CV OR cat:cs.SE)`;
+  const textQuery = safeTerms
+    .map((term) => `all:${term}`)
+    .join("+OR+");
 
-  const params = new URLSearchParams({
-    search_query: searchQuery,
-    start: "0",
-    max_results: "5",
-    sortBy: "submittedDate",
-    sortOrder: "descending",
+  const categoryQuery = [
+    "cat:cs.AI",
+    "cat:cs.LG",
+    "cat:cs.CL",
+    "cat:cs.CV",
+    "cat:cs.SE",
+  ].join("+OR+");
+
+  const searchQuery = `(${textQuery})+AND+(${categoryQuery})`;
+
+  const url =
+    `https://export.arxiv.org/api/query?` +
+    `search_query=${searchQuery}` +
+    `&start=0` +
+    `&max_results=5` +
+    `&sortBy=submittedDate` +
+    `&sortOrder=descending`;
+
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent": "DevTrendAgent/1.0",
+    },
   });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`arXiv API failed: ${response.status} ${text.slice(0, 200)}`);
+  }
+
+  const xml = await response.text();
+  const entries = xml.match(/<entry>[\s\S]*?<\/entry>/g) || [];
+
+  return entries.slice(0, 5).map((entry) => ({
+    source: "arXiv",
+    title: cleanXml(getXmlTag(entry, "title")),
+    summary: cleanXml(getXmlTag(entry, "summary")).slice(0, 800),
+    url: cleanXml(getXmlTag(entry, "id")),
+    published: cleanXml(getXmlTag(entry, "published")),
+    updated: cleanXml(getXmlTag(entry, "updated")),
+    authors: [
+      ...entry.matchAll(
+        /<author>\s*<name>([\s\S]*?)<\/name>\s*<\/author>/g
+      ),
+    ]
+      .map((m) => cleanXml(m[1]))
+      .slice(0, 5),
+  }));
+}
 
   const response = await fetch(`https://export.arxiv.org/api/query?${params}`, {
     headers: {
@@ -759,4 +798,61 @@ function mcpHeaders() {
       "Content-Type, Authorization, MCP-Protocol-Version, mcp-session-id",
     "MCP-Protocol-Version": "2025-03-26",
   };
+}
+
+function normalizeSearchTerms(query) {
+  const stopwords = new Set([
+    "or",
+    "and",
+    "the",
+    "a",
+    "an",
+    "latest",
+    "trend",
+    "trends",
+    "tool",
+    "tools",
+  ]);
+
+  const phraseMap = [
+    ["ai image generation", "image_generation"],
+    ["image generation", "image_generation"],
+    ["text to image", "text_to_image"],
+    ["text-to-image", "text_to_image"],
+    ["generative ai", "generative_ai"],
+    ["diffusion model", "diffusion"],
+    ["diffusion models", "diffusion"],
+    ["image editing", "image_editing"],
+    ["ai agent", "agent"],
+    ["workflow automation", "workflow"],
+  ];
+
+  let normalized = String(query || "").toLowerCase();
+
+  normalized = normalized
+    .replace(/["'“”‘’]/g, " ")
+    .replace(/[()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const terms = [];
+
+  for (const [phrase, replacement] of phraseMap) {
+    if (normalized.includes(phrase)) {
+      terms.push(replacement);
+      normalized = normalized.replaceAll(phrase, " ");
+    }
+  }
+
+  normalized
+    .split(/[^a-z0-9_]+/i)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .forEach((term) => {
+      if (!stopwords.has(term) && term.length >= 2) {
+        terms.push(term);
+      }
+    });
+
+  return [...new Set(terms)].slice(0, 8);
 }
