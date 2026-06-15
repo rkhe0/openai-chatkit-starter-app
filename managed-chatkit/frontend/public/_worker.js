@@ -349,7 +349,7 @@ async function searchArxiv(query) {
       .map((m) => cleanXml(m[1]))
       .slice(0, 5),
   }));
-}
+
 
 /**
  * GitHub REST API 호출
