@@ -28,6 +28,14 @@ export default {
       return handleCollectTrends(request, env);
     }
 
+    if (url.pathname === "/api/report-settings") {
+    return handleReportSettings(request, env);
+    }
+
+    if (url.pathname === "/api/scheduled-settings") {
+    return handleScheduledSettings(request, env);
+    }
+
     return env.ASSETS.fetch(request);
   },
 };
@@ -922,5 +930,118 @@ function mcpHeaders() {
     "Access-Control-Allow-Headers":
       "Content-Type, Authorization, x-api-key, MCP-Protocol-Version, mcp-session-id",
     "MCP-Protocol-Version": "2025-03-26",
+  };
+}
+const REPORT_SETTINGS_KEY = "report_settings:v1";
+
+async function handleReportSettings(request, env) {
+  if (!env.DEVTREND_KV) {
+    return json(
+      {
+        error: "Missing DEVTREND_KV binding",
+        message: "Cloudflare Pages에 DEVTREND_KV binding을 연결해야 합니다.",
+      },
+      500
+    );
+  }
+
+  if (request.method === "GET") {
+    const settings = await getReportSettings(env);
+    return json({
+      ok: true,
+      settings: publicReportSettings(settings),
+    });
+  }
+
+  if (request.method === "POST") {
+    const body = await request.json().catch(() => ({}));
+
+    const previous = await getReportSettings(env);
+
+    const topic = String(body.topic || previous.topic || "").trim();
+
+    if (!topic) {
+      return json({ error: "topic is required" }, 400);
+    }
+
+    if (topic.length > 200) {
+      return json({ error: "topic is too long" }, 400);
+    }
+
+    const settings = {
+      topic,
+      enabled:
+        typeof body.enabled === "boolean"
+          ? body.enabled
+          : previous.enabled ?? true,
+      updated_at: new Date().toISOString(),
+    };
+
+    await env.DEVTREND_KV.put(
+      REPORT_SETTINGS_KEY,
+      JSON.stringify(settings)
+    );
+
+    return json({
+      ok: true,
+      message: "Report settings saved",
+      settings: publicReportSettings(settings),
+    });
+  }
+
+  return json({ error: "Method Not Allowed" }, 405);
+}
+
+async function handleScheduledSettings(request, env) {
+  const url = new URL(request.url);
+
+  const tokenFromQuery = url.searchParams.get("token");
+  const tokenFromHeader = request.headers.get("x-schedule-secret");
+
+  if (env.SCHEDULE_SECRET) {
+    const valid =
+      tokenFromQuery === env.SCHEDULE_SECRET ||
+      tokenFromHeader === env.SCHEDULE_SECRET;
+
+    if (!valid) {
+      return json({ error: "Unauthorized scheduled settings request" }, 401);
+    }
+  }
+
+  const settings = await getReportSettings(env);
+
+  return json({
+    ok: true,
+    settings,
+  });
+}
+
+async function getReportSettings(env) {
+  const defaults = {
+    topic: env.DAILY_TOPIC || "최신 AI 이미지 생성 툴 트렌드",
+    enabled: true,
+    updated_at: null,
+  };
+
+  if (!env.DEVTREND_KV) {
+    return defaults;
+  }
+
+  const saved = await env.DEVTREND_KV.get(
+    REPORT_SETTINGS_KEY,
+    "json"
+  ).catch(() => null);
+
+  return {
+    ...defaults,
+    ...(saved || {}),
+  };
+}
+
+function publicReportSettings(settings) {
+  return {
+    topic: settings.topic,
+    enabled: settings.enabled,
+    updated_at: settings.updated_at,
   };
 }
