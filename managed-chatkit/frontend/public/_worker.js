@@ -757,6 +757,52 @@ async function handleMcp(request, env) {
                 required: ["query"],
               },
             },
+            {
+  name: "save_notion_report",
+  title: "Save report to Notion",
+  description: "Save the final trend briefing report to a Notion database.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      topic: {
+        type: "string",
+        description: "The user's original report topic"
+      },
+      report: {
+        type: "string",
+        description: "The final Korean report body"
+      },
+      search_query: {
+        type: "string",
+        description: "English query used for API collection"
+      }
+    },
+    required: ["topic", "report"]
+  }
+},
+{
+  name: "send_email_report",
+  title: "Send report by email",
+  description: "Send the final trend briefing report by email.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      to: {
+        type: "string",
+        description: "Recipient email address"
+      },
+      subject: {
+        type: "string",
+        description: "Email subject"
+      },
+      report: {
+        type: "string",
+        description: "The final Korean report body"
+      }
+    },
+    required: ["to", "subject", "report"]
+  }
+}
           ],
         },
       });
