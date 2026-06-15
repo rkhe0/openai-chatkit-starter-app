@@ -31,14 +31,14 @@ export default {
     }
 
     if (url.pathname === "/api/daily-briefing") {
-  return handleDailyBriefing(request, env);
-}
+      return handleDailyBriefing(request, env);
+    }
     if (url.pathname === "/api/daily-settings") {
-  return handleDailySettings(request, env);
-}
+      return handleDailySettings(request, env);
+    }
     if (url.pathname === "/api/daily-run-now") {
-  return handleDailyRunNow(request, env);
-}
+      return handleDailyRunNow(request, env);
+    }
 
     return env.ASSETS.fetch(request);
   },
@@ -567,9 +567,8 @@ ${JSON.stringify(sources.hacker_news, null, 2)}
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    return `OpenAI briefing generation failed: ${
-      data?.error?.message || response.status
-    }`;
+    return `OpenAI briefing generation failed: ${data?.error?.message || response.status
+      }`;
   }
 
   return extractOutputText(data);
@@ -758,51 +757,51 @@ async function handleMcp(request, env) {
               },
             },
             {
-  name: "save_notion_report",
-  title: "Save report to Notion",
-  description: "Save the final trend briefing report to a Notion database.",
-  inputSchema: {
-    type: "object",
-    properties: {
-      topic: {
-        type: "string",
-        description: "The user's original report topic"
-      },
-      report: {
-        type: "string",
-        description: "The final Korean report body"
-      },
-      search_query: {
-        type: "string",
-        description: "English query used for API collection"
-      }
-    },
-    required: ["topic", "report"]
-  }
-},
-{
-  name: "send_email_report",
-  title: "Send report by email",
-  description: "Send the final trend briefing report by email.",
-  inputSchema: {
-    type: "object",
-    properties: {
-      to: {
-        type: "string",
-        description: "Recipient email address"
-      },
-      subject: {
-        type: "string",
-        description: "Email subject"
-      },
-      report: {
-        type: "string",
-        description: "The final Korean report body"
-      }
-    },
-    required: ["to", "subject", "report"]
-  }
-}
+              name: "save_notion_report",
+              title: "Save report to Notion",
+              description: "Save the final trend briefing report to a Notion database.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  topic: {
+                    type: "string",
+                    description: "The user's original report topic"
+                  },
+                  report: {
+                    type: "string",
+                    description: "The final Korean report body"
+                  },
+                  search_query: {
+                    type: "string",
+                    description: "English query used for API collection"
+                  }
+                },
+                required: ["topic", "report"]
+              }
+            },
+            {
+              name: "send_email_report",
+              title: "Send report by email",
+              description: "Send the final trend briefing report by email.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  to: {
+                    type: "string",
+                    description: "Recipient email address"
+                  },
+                  subject: {
+                    type: "string",
+                    description: "Email subject"
+                  },
+                  report: {
+                    type: "string",
+                    description: "The final Korean report body"
+                  }
+                },
+                required: ["to", "subject", "report"]
+              }
+            }
           ],
         },
       });
@@ -1008,27 +1007,27 @@ async function handleDailyBriefing(request, env) {
     body = await request.json().catch(() => ({}));
   }
 
- const settings = await getDailySettings(env);
+  const settings = await getDailySettings(env);
 
-if (!settings.enabled && !body.force) {
-  return json({
-    ok: false,
-    skipped: true,
-    reason: "Daily briefing is disabled by user setting",
-  });
-}
+  if (!settings.enabled && !body.force) {
+    return json({
+      ok: false,
+      skipped: true,
+      reason: "Daily briefing is disabled by user setting",
+    });
+  }
 
-const topic =
-  body.topic ||
-  url.searchParams.get("topic") ||
-  settings.topic ||
-  env.DAILY_TOPIC ||
-  "AI Agent MCP Workflow automation";
+  const topic =
+    body.topic ||
+    url.searchParams.get("topic") ||
+    settings.topic ||
+    env.DAILY_TOPIC ||
+    "AI Agent MCP Workflow automation";
 
-const emailTo =
-  body.email ||
-  settings.email ||
-  env.EMAIL_TO;
+  const emailTo =
+    body.email ||
+    settings.email ||
+    env.EMAIL_TO;
 
   const collected = await collectTrendSources(topic, env);
   const briefing = await createBriefing(topic, collected.sources, env);
@@ -1043,16 +1042,16 @@ const emailTo =
   };
 
   const notionResult = settings.delivery?.notion
-  ? await saveBriefingToNotion(result, env)
-  : {
+    ? await saveBriefingToNotion(result, env)
+    : {
       ok: false,
       skipped: true,
       reason: "Notion delivery disabled",
     };
 
-const emailResult = settings.delivery?.email
-  ? await sendBriefingEmail(result, emailTo, env)
-  : {
+  const emailResult = settings.delivery?.email
+    ? await sendBriefingEmail(result, emailTo, env)
+    : {
       ok: false,
       skipped: true,
       reason: "Email delivery disabled",
@@ -1171,8 +1170,7 @@ function notionBlocksFromBriefing(result) {
       },
     },
     paragraphBlock(
-      `arXiv: ${result.counts?.arxiv || 0}건 / GitHub: ${
-        result.counts?.github || 0
+      `arXiv: ${result.counts?.arxiv || 0}건 / GitHub: ${result.counts?.github || 0
       }건 / Hacker News: ${result.counts?.hacker_news || 0}건`
     ),
     paragraphBlock(`생성 시각: ${result.generated_at}`),
@@ -1287,8 +1285,8 @@ ${result.briefing}
       </ul>
       <h3>브리핑</h3>
       <pre style="white-space: pre-wrap; font-family: Arial, sans-serif;">${escapeHtml(
-        result.briefing
-      )}</pre>
+    result.briefing
+  )}</pre>
     </div>
   `;
 
@@ -1448,18 +1446,18 @@ async function handleDailyRunNow(request, env) {
   const notion = delivery.notion
     ? await saveBriefingToNotion(result, env)
     : {
-        ok: false,
-        skipped: true,
-        reason: "Notion delivery disabled",
-      };
+      ok: false,
+      skipped: true,
+      reason: "Notion delivery disabled",
+    };
 
   const email = delivery.email
     ? await sendBriefingEmail(result, emailTo, env)
     : {
-        ok: false,
-        skipped: true,
-        reason: "Email delivery disabled",
-      };
+      ok: false,
+      skipped: true,
+      reason: "Email delivery disabled",
+    };
 
   return json({
     ok: true,
