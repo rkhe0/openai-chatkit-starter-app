@@ -1,26 +1,22 @@
 import { hostedMcpTool, Agent, AgentInputItem, Runner, withTrace } from "@openai/agents";
 import { z } from "zod";
 
-const MCP_SERVER_URL =
-  process.env.MCP_SERVER_URL ||
-  "https://openai-chatkit-starter-app-99n.pages.dev/mcp";
 
-const MCP_ACCESS_TOKEN = process.env.MCP_ACCESS_TOKEN || "";
 // Tool definitions
 const mcp = hostedMcpTool({
   serverLabel: "collect_trends",
   allowedTools: [
     "collect_trends"
   ],
-    authorization: MCP_ACCESS_TOKEN,
-    serverUrl: MCP_SERVER_URL,
+  authorization: "devtrend-demo-token-2026",
   requireApproval: "never",
+  serverUrl: "https://openai-chatkit-starter-app-99n.pages.dev/mcp"
 })
 const mcp1 = hostedMcpTool({
   serverLabel: "devtrend_mcp",
-authorization: MCP_ACCESS_TOKEN,
-    serverUrl: MCP_SERVER_URL,  
-    allowedTools: [
+  serverUrl: "https://openai-chatkit-starter-app-99n.pages.dev/mcp",
+  authorization: "devtrend-demo-token-2026",
+  allowedTools: [
     "save_notion_report",
     "send_email_report"
   ],
@@ -115,12 +111,19 @@ const briefingWriter = new Agent({
 근거:
 개발자 관점:
 3. 근거 링크
+이 섹션은 반드시 실제 URL을 포함한다. 제목만 쓰면 안 된다. 원천 데이터의 url, hn_url, html_url 중 사용 가능한 링크를 반드시 표시한다.
+출력 형식:
 arXiv
-{논문 제목} — 한 줄 설명
+제목: {논문 제목} URL: {논문 URL} 설명: {한 줄 설명}
 GitHub
-{저장소명} — stars/language, 한 줄 설명
+제목: {저장소명} URL: {저장소 URL} 정보: stars {숫자}, language {언어} 설명: {한 줄 설명}
 Hacker News
-{게시글 제목} — points/comments, 한 줄 설명
+제목: {게시글 제목} URL: {게시글 URL 또는 hn_url} 정보: points {숫자}, comments {숫자} 설명: {한 줄 설명}
+작성 규칙:
+URL이 없는 항목은 근거 링크 섹션에 넣지 않는다.
+각 소스별 최대 3개만 표시한다.
+제목만 쓰고 URL을 생략하는 것은 금지한다.
+URL은 반드시 https://... 또는 http://... 원문 형태로 출력한다.
 4. 개발자 추천 액션
 2~3개 bullet만 작성
 작성 규칙:
@@ -213,7 +216,22 @@ Hacker News
 “수집 결과는 총 15건이지만, 금융/핀테크와 직접 관련된 근거는 제한적입니다.”
 
 수정된 요약:
-“핀테크 영역에서는 신용 심사 자동화, 개인 저축 관리, AI 투자 판단 보조처럼 사용자 금융 의사결정을 자동화하는 흐름이 관찰됩니다.”`,
+“핀테크 영역에서는 신용 심사 자동화, 개인 저축 관리, AI 투자 판단 보조처럼 사용자 금융 의사결정을 자동화하는 흐름이 관찰됩니다.”
+근거 링크 검토 규칙:
+3. 근거 링크 섹션의 모든 항목에는 반드시 URL이 있어야 한다.
+제목과 설명만 있고 URL이 없으면 잘못된 출력이다.
+원천 데이터에서 해당 항목의 url, html_url, hn_url 값을 찾아 URL 줄을 추가한다.
+URL을 찾을 수 없는 항목은 근거 링크 섹션에서 제거한다.
+최종 출력에서는 아래 형식을 반드시 유지한다.
+arXiv
+제목: {논문 제목} URL: {논문 URL} 설명: {한 줄 설명}
+GitHub
+제목: {저장소명} URL: {저장소 URL} 정보: stars {숫자}, language {언어} 설명: {한 줄 설명}
+Hacker News
+제목: {게시글 제목} URL: {게시글 URL 또는 hn_url} 정보: points {숫자}, comments {숫자} 설명: {한 줄 설명}
+최종 점검:
+URL:이 없는 근거 항목이 있으면 다시 작성한다.
+링크를 제목에 숨기지 말고 URL 원문을 별도 줄에 표시한다.`,
   model: "gpt-5.5",
   modelSettings: {
     reasoning: {
