@@ -1,0 +1,14 @@
+{
+  "name": "scheduled-devtrend-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@openai/agents": "latest",
+    "tsx": "latest",
+    "zod": "latest"
+  }
+}
