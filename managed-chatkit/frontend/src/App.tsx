@@ -1,11 +1,16 @@
-import { TrendDemo } from "./components/TrendDemo";
+import { DailyReportSettings } from "./components/DailyReportSettings";
 import { ChatKitPanel } from "./components/ChatKitPanel";
 
 export default function App() {
   return (
-    <>
-      <TrendDemo />
-      <ChatKitPanel />
-    </>
+    <main className="min-h-screen bg-black text-white">
+      <DailyReportSettings />
+
+      <section className="mx-auto w-full max-w-5xl px-6 pb-10">
+        <div className="rounded-2xl border border-neutral-800 bg-white text-black">
+          <ChatKitPanel />
+        </div>
+      </section>
+    </main>
   );
 }
