@@ -1,17 +1,38 @@
-name: Daily DevTrend Briefing
+name: Daily DevTrend Agent Report
 
 on:
   schedule:
-    # 한국 오전 8시 = 전날 23:00 UTC
+    # 한국 오전 8시 = UTC 23:00
     - cron: "0 23 * * *"
   workflow_dispatch:
+    inputs:
+      topic:
+        description: "보고서 주제"
+        required: false
+        default: "최신 AI 이미지 생성 툴 트렌드"
 
 jobs:
-  trigger-daily-briefing:
+  run-agent-report:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Call Cloudflare daily briefing endpoint
-        run: |
-          curl -X POST "${{ secrets.DAILY_BRIEFING_URL }}" \
-            -H "Content-Type: application/json" \
-            -d "{}"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install scheduled agent dependencies
+        working-directory: scheduled-agent
+        run: npm install
+
+      - name: Run exported Agent Builder workflow
+        working-directory: scheduled-agent
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
+          MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
+          DAILY_TOPIC: ${{ github.event.inputs.topic || secrets.DAILY_TOPIC }}
+        run: npm run start
