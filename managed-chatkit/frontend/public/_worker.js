@@ -36,6 +36,9 @@ export default {
     if (url.pathname === "/api/daily-settings") {
   return handleDailySettings(request, env);
 }
+    if (url.pathname === "/api/daily-run-now") {
+  return handleDailyRunNow(request, env);
+}
 
     return env.ASSETS.fetch(request);
   },
