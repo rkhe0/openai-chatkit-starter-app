@@ -5,11 +5,6 @@ on:
     # 한국 오전 8시 = UTC 23:00
     - cron: "0 23 * * *"
   workflow_dispatch:
-    inputs:
-      topic:
-        description: "보고서 주제"
-        required: false
-        default: "최신 AI 이미지 생성 툴 트렌드"
 
 jobs:
   run-agent-report:
@@ -32,21 +27,14 @@ jobs:
         env:
           APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
           SCHEDULE_SECRET: ${{ secrets.SCHEDULE_SECRET }}
-          MANUAL_TOPIC: ${{ github.event.inputs.topic }}
         run: |
           set -e
 
-          if [ -n "$MANUAL_TOPIC" ]; then
-            echo "Using manual topic from workflow_dispatch input."
-            topic="$MANUAL_TOPIC"
-            enabled="true"
-          else
-            response=$(curl -fsS "$APP_BASE_URL/api/scheduled-settings?token=$SCHEDULE_SECRET")
-            echo "$response"
+          response=$(curl -fsS "$APP_BASE_URL/api/scheduled-settings?token=$SCHEDULE_SECRET")
+          echo "$response"
 
-            enabled=$(echo "$response" | jq -r '.settings.enabled')
-            topic=$(echo "$response" | jq -r '.settings.topic')
-          fi
+          enabled=$(echo "$response" | jq -r '.settings.enabled')
+          topic=$(echo "$response" | jq -r '.settings.topic')
 
           if [ "$enabled" != "true" ]; then
             echo "Daily report is disabled by saved settings."
@@ -62,7 +50,7 @@ jobs:
           echo "$topic" >> "$GITHUB_ENV"
           echo "EOF" >> "$GITHUB_ENV"
 
-          echo "Loaded topic: $topic"
+          echo "Loaded topic from KV: $topic"
 
       - name: Run exported Agent Builder workflow
         working-directory: scheduled-agent
@@ -70,5 +58,5 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
           MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
-          DAILY_TOPIC: ${{ github.event.inputs.topic || secrets.DAILY_TOPIC }}
+          DAILY_TOPIC: ${{ env.DAILY_TOPIC }}
         run: npm run start
