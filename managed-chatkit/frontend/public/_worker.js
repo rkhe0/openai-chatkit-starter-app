@@ -569,6 +569,30 @@ function corsResponse() {
 }
 
 async function handleMcp(request, env) {
+  const authHeader = request.headers.get("Authorization") || "";
+  const xApiKey = request.headers.get("x-api-key") || "";
+
+  if (env.MCP_ACCESS_TOKEN) {
+    const expectedBearer = `Bearer ${env.MCP_ACCESS_TOKEN}`;
+    const valid =
+      authHeader === expectedBearer ||
+      xApiKey === env.MCP_ACCESS_TOKEN;
+
+    if (!valid) {
+      return mcpJson(
+        {
+          jsonrpc: "2.0",
+          error: {
+            code: -32001,
+            message: "Unauthorized MCP request",
+          },
+          id: null,
+        },
+        401
+      );
+    }
+  }
+
   if (request.method === "GET") {
     return mcpJson({
       jsonrpc: "2.0",
