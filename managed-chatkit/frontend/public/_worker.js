@@ -6,6 +6,10 @@ export default {
       return corsResponse();
     }
 
+    if (url.pathname === "/mcp") {
+      return handleMcp(request, env);
+    }
+
     if (url.pathname === "/api/health") {
       return json({
         ok: true,
@@ -562,4 +566,173 @@ function corsResponse() {
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
   });
+}
+
+async function handleMcp(request, env) {
+  if (request.method === "GET") {
+    return mcpJson({
+      jsonrpc: "2.0",
+      result: {
+        status: "ok",
+        server: "devtrend-mcp-server",
+        message: "Use POST /mcp with JSON-RPC MCP messages.",
+      },
+      id: null,
+    });
+  }
+
+  if (request.method !== "POST") {
+    return mcpJson(
+      {
+        jsonrpc: "2.0",
+        error: {
+          code: -32600,
+          message: "Method Not Allowed",
+        },
+        id: null,
+      },
+      405
+    );
+  }
+
+  const message = await request.json().catch(() => null);
+
+  if (!message) {
+    return mcpJson({
+      jsonrpc: "2.0",
+      error: {
+        code: -32700,
+        message: "Parse error",
+      },
+      id: null,
+    });
+  }
+
+  // MCP notifications, such as notifications/initialized, do not require a response.
+  if (!message.id && message.method?.startsWith("notifications/")) {
+    return new Response(null, {
+      status: 202,
+      headers: mcpHeaders(),
+    });
+  }
+
+  switch (message.method) {
+    case "initialize":
+      return mcpJson({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: {
+          protocolVersion: "2025-03-26",
+          capabilities: {
+            tools: {},
+          },
+          serverInfo: {
+            name: "devtrend-mcp-server",
+            version: "1.0.0",
+          },
+        },
+      });
+
+    case "tools/list":
+      return mcpJson({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: {
+          tools: [
+            {
+              name: "collect_trends",
+              title: "Collect AI development trends",
+              description:
+                "Collects AI development trend source data from arXiv, GitHub, and Hacker News APIs. Use this before writing an AI development trend briefing.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  query: {
+                    type: "string",
+                    description:
+                      "AI development trend search query. Example: AI Agent MCP Workflow automation",
+                  },
+                },
+                required: ["query"],
+              },
+            },
+          ],
+        },
+      });
+
+    case "tools/call":
+      return handleMcpToolCall(message, env);
+
+    default:
+      return mcpJson({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: {
+          code: -32601,
+          message: `Method not found: ${message.method}`,
+        },
+      });
+  }
+}
+
+async function handleMcpToolCall(message, env) {
+  const toolName = message.params?.name;
+  const args = message.params?.arguments || {};
+
+  if (toolName !== "collect_trends") {
+    return mcpJson({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: {
+        code: -32602,
+        message: `Unknown tool: ${toolName}`,
+      },
+    });
+  }
+
+  const query = String(args.query || "AI Agent MCP Workflow automation").trim();
+
+  const collected = await collectTrendSources(query, env);
+
+  const result = {
+    tool_name: "collect_trends",
+    query,
+    generated_at: new Date().toISOString(),
+    api_evidence: getApiEvidence(),
+    counts: collected.counts,
+    source_errors: collected.source_errors,
+    sources: collected.sources,
+  };
+
+  return mcpJson({
+    jsonrpc: "2.0",
+    id: message.id,
+    result: {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+      structuredContent: result,
+    },
+  });
+}
+
+function mcpJson(data, status = 200) {
+  return new Response(JSON.stringify(data, null, 2), {
+    status,
+    headers: mcpHeaders(),
+  });
+}
+
+function mcpHeaders() {
+  return {
+    "Content-Type": "application/json; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, MCP-Protocol-Version, mcp-session-id",
+    "MCP-Protocol-Version": "2025-03-26",
+  };
 }
