@@ -30,6 +30,13 @@ export default {
       return handleTrends(request, env);
     }
 
+    if (url.pathname === "/api/daily-briefing") {
+  return handleDailyBriefing(request, env);
+}
+    if (url.pathname === "/api/daily-settings") {
+  return handleDailySettings(request, env);
+}
+
     return env.ASSETS.fetch(request);
   },
 };
@@ -930,4 +937,466 @@ function normalizeGenericSearchTerms(query) {
     .filter((term) => term.length >= 2)
     .filter((term, index, arr) => arr.indexOf(term) === index)
     .slice(0, 12);
+}
+async function handleDailyBriefing(request, env) {
+  const url = new URL(request.url);
+
+  const tokenFromQuery = url.searchParams.get("token");
+  const tokenFromHeader = request.headers.get("x-daily-secret");
+
+  if (env.DAILY_SECRET) {
+    const valid =
+      tokenFromQuery === env.DAILY_SECRET ||
+      tokenFromHeader === env.DAILY_SECRET;
+
+    if (!valid) {
+      return json({ error: "Unauthorized daily briefing request" }, 401);
+    }
+  }
+
+  let body = {};
+  if (request.method === "POST") {
+    body = await request.json().catch(() => ({}));
+  }
+
+  const settings = await getDailySettings(env);
+
+if (!settings.enabled && !body.force) {
+  return json({
+    ok: false,
+    skipped: true,
+    reason: "Daily briefing is disabled by user setting",
+  });
+}
+
+const topic =
+  body.topic ||
+  url.searchParams.get("topic") ||
+  settings.topic ||
+  env.DAILY_TOPIC ||
+  "AI Agent MCP Workflow automation";
+
+const emailTo =
+  body.email ||
+  settings.email ||
+  env.EMAIL_TO;
+
+  const emailTo = body.email || env.EMAIL_TO;
+
+  const collected = await collectTrendSources(topic, env);
+  const briefing = await createBriefing(topic, collected.sources, env);
+
+  const result = {
+    topic,
+    generated_at: new Date().toISOString(),
+    counts: collected.counts,
+    source_errors: collected.source_errors,
+    api_evidence: getApiEvidence(),
+    briefing,
+  };
+
+  const notionResult = settings.delivery?.notion
+  ? await saveBriefingToNotion(result, env)
+  : {
+      ok: false,
+      skipped: true,
+      reason: "Notion delivery disabled",
+    };
+
+const emailResult = settings.delivery?.email
+  ? await sendBriefingEmail(result, emailTo, env)
+  : {
+      ok: false,
+      skipped: true,
+      reason: "Email delivery disabled",
+    };
+
+  return json({
+    ok: true,
+    message: "Daily briefing generated and delivered",
+    topic,
+    counts: collected.counts,
+    notion: notionResult,
+    email: emailResult,
+  });
+}
+
+async function saveBriefingToNotion(result, env) {
+  if (!env.NOTION_TOKEN || !env.NOTION_DATABASE_ID) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "Missing NOTION_TOKEN or NOTION_DATABASE_ID",
+    };
+  }
+
+  const title = `[DevTrend] ${result.topic} - ${formatDateForTitle(
+    result.generated_at
+  )}`;
+
+  const response = await fetch("https://api.notion.com/v1/pages", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.NOTION_TOKEN}`,
+      "Content-Type": "application/json",
+      "Notion-Version": "2022-06-28",
+    },
+    body: JSON.stringify({
+      parent: {
+        database_id: env.NOTION_DATABASE_ID,
+      },
+      properties: {
+        Name: {
+          title: [
+            {
+              text: {
+                content: title,
+              },
+            },
+          ],
+        },
+        Topic: {
+          rich_text: [
+            {
+              text: {
+                content: result.topic,
+              },
+            },
+          ],
+        },
+        Date: {
+          date: {
+            start: result.generated_at,
+          },
+        },
+        arXiv: {
+          number: result.counts?.arxiv || 0,
+        },
+        GitHub: {
+          number: result.counts?.github || 0,
+        },
+        HackerNews: {
+          number: result.counts?.hacker_news || 0,
+        },
+      },
+      children: notionBlocksFromBriefing(result),
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: payload?.message || payload?.error || "Notion API failed",
+      details: payload,
+    };
+  }
+
+  return {
+    ok: true,
+    page_id: payload.id,
+    url: payload.url,
+  };
+}
+
+function notionBlocksFromBriefing(result) {
+  const lines = String(result.briefing || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 80);
+
+  const blocks = [
+    {
+      object: "block",
+      type: "heading_2",
+      heading_2: {
+        rich_text: [
+          {
+            type: "text",
+            text: {
+              content: "API 수집 결과",
+            },
+          },
+        ],
+      },
+    },
+    paragraphBlock(
+      `arXiv: ${result.counts?.arxiv || 0}건 / GitHub: ${
+        result.counts?.github || 0
+      }건 / Hacker News: ${result.counts?.hacker_news || 0}건`
+    ),
+    paragraphBlock(`생성 시각: ${result.generated_at}`),
+    {
+      object: "block",
+      type: "heading_2",
+      heading_2: {
+        rich_text: [
+          {
+            type: "text",
+            text: {
+              content: "AI 브리핑",
+            },
+          },
+        ],
+      },
+    },
+  ];
+
+  for (const line of lines) {
+    if (line.startsWith("#")) {
+      blocks.push(headingBlock(line.replace(/^#+\s*/, "").slice(0, 180)));
+    } else {
+      blocks.push(paragraphBlock(line.slice(0, 1900)));
+    }
+  }
+
+  return blocks;
+}
+
+function paragraphBlock(content) {
+  return {
+    object: "block",
+    type: "paragraph",
+    paragraph: {
+      rich_text: [
+        {
+          type: "text",
+          text: {
+            content: content || " ",
+          },
+        },
+      ],
+    },
+  };
+}
+
+function headingBlock(content) {
+  return {
+    object: "block",
+    type: "heading_3",
+    heading_3: {
+      rich_text: [
+        {
+          type: "text",
+          text: {
+            content: content || " ",
+          },
+        },
+      ],
+    },
+  };
+}
+
+async function sendBriefingEmail(result, emailTo, env) {
+  if (!env.RESEND_API_KEY) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "Missing RESEND_API_KEY",
+    };
+  }
+
+  if (!emailTo) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "Missing EMAIL_TO",
+    };
+  }
+
+  const from = env.EMAIL_FROM || "DevTrend <onboarding@resend.dev>";
+
+  const subject = `[DevTrend] ${result.topic} 브리핑 - ${formatDateForTitle(
+    result.generated_at
+  )}`;
+
+  const text = `
+[DevTrend 일일 AI 개발 트렌드 브리핑]
+
+주제: ${result.topic}
+생성 시각: ${result.generated_at}
+
+API 수집 결과
+- arXiv: ${result.counts?.arxiv || 0}건
+- GitHub: ${result.counts?.github || 0}건
+- Hacker News: ${result.counts?.hacker_news || 0}건
+
+${result.briefing}
+`.trim();
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+      <h2>DevTrend 일일 AI 개발 트렌드 브리핑</h2>
+      <p><b>주제:</b> ${escapeHtml(result.topic)}</p>
+      <p><b>생성 시각:</b> ${escapeHtml(result.generated_at)}</p>
+      <h3>API 수집 결과</h3>
+      <ul>
+        <li>arXiv: ${result.counts?.arxiv || 0}건</li>
+        <li>GitHub: ${result.counts?.github || 0}건</li>
+        <li>Hacker News: ${result.counts?.hacker_news || 0}건</li>
+      </ul>
+      <h3>브리핑</h3>
+      <pre style="white-space: pre-wrap; font-family: Arial, sans-serif;">${escapeHtml(
+        result.briefing
+      )}</pre>
+    </div>
+  `;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: [emailTo],
+      subject,
+      text,
+      html,
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: payload?.message || payload?.error || "Resend API failed",
+      details: payload,
+    };
+  }
+
+  return {
+    ok: true,
+    id: payload.id,
+  };
+}
+
+function formatDateForTitle(value) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+const DAILY_SETTINGS_KEY = "daily_settings:v1";
+
+async function handleDailySettings(request, env) {
+  if (!env.DEVTREND_KV) {
+    return json(
+      {
+        error: "Missing KV binding",
+        message: "Cloudflare Pages에 DEVTREND_KV binding을 추가해야 합니다.",
+      },
+      500
+    );
+  }
+
+  if (request.method === "GET") {
+    const settings = await getDailySettings(env);
+    return json({
+      ok: true,
+      settings: publicDailySettings(settings),
+    });
+  }
+
+  if (request.method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const previous = await getDailySettings(env);
+
+    const topic = String(body.topic || previous.topic || "").trim();
+    const email = String(body.email || previous.email || "").trim();
+
+    if (!topic) {
+      return json({ error: "topic is required" }, 400);
+    }
+
+    if (topic.length > 200) {
+      return json({ error: "topic is too long" }, 400);
+    }
+
+    const settings = {
+      topic,
+      email,
+      enabled:
+        typeof body.enabled === "boolean"
+          ? body.enabled
+          : previous.enabled ?? true,
+      delivery: {
+        email:
+          typeof body.delivery?.email === "boolean"
+            ? body.delivery.email
+            : previous.delivery?.email ?? true,
+        notion:
+          typeof body.delivery?.notion === "boolean"
+            ? body.delivery.notion
+            : previous.delivery?.notion ?? true,
+      },
+      updated_at: new Date().toISOString(),
+    };
+
+    await env.DEVTREND_KV.put(
+      DAILY_SETTINGS_KEY,
+      JSON.stringify(settings)
+    );
+
+    return json({
+      ok: true,
+      message: "Daily briefing settings saved",
+      settings: publicDailySettings(settings),
+    });
+  }
+
+  return json({ error: "Method not allowed" }, 405);
+}
+
+async function getDailySettings(env) {
+  const defaults = {
+    topic: env.DAILY_TOPIC || "AI Agent MCP Workflow automation",
+    email: env.EMAIL_TO || "",
+    enabled: true,
+    delivery: {
+      email: true,
+      notion: true,
+    },
+    updated_at: null,
+  };
+
+  if (!env.DEVTREND_KV) {
+    return defaults;
+  }
+
+  const saved = await env.DEVTREND_KV.get(
+    DAILY_SETTINGS_KEY,
+    "json"
+  ).catch(() => null);
+
+  return {
+    ...defaults,
+    ...(saved || {}),
+    delivery: {
+      ...defaults.delivery,
+      ...(saved?.delivery || {}),
+    },
+  };
+}
+
+function publicDailySettings(settings) {
+  return {
+    topic: settings.topic,
+    email: settings.email,
+    enabled: settings.enabled,
+    delivery: settings.delivery,
+    updated_at: settings.updated_at,
+  };
 }
